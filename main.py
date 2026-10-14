@@ -1,6 +1,8 @@
 import os
 import logging
 import random
+from flask import Flask, request
+from threading import Thread
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import (
     Application,
@@ -19,12 +21,17 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN")
 
 # مراحل المحادثة
 WAITING_FOR_ID = 1
-WAITING_FOR_DEPOSIT_PROOF = 2
 
 # رابط الإحالة الخاص بك
 REGISTRATION_URL = "https://pocket-friends.co/r/g6ccrwmyb6"
 
-# قائمة كافة أزواج العملات والذهب
+# قائمة الـ IDs المعتمدة (تتحدث تلقائياً عند وصول Postback)
+ALLOWED_IDS = set([
+    "12345678",
+    "139822533"
+])
+
+# قائمة الأزواج
 ALL_PAIRS = {
     'XAUUSD': "🪙 الذهب (XAUUSD)",
     'EURUSD': "💶 EUR/USD",
@@ -36,97 +43,109 @@ ALL_PAIRS = {
     'NZDUSD': "🇳🇿 NZD/USD"
 }
 
-# زر Start المثبت بالأسفل
-def get_start_keyboard():
-    keyboard = [[KeyboardButton("🚀 بدء / Start")]]
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+# --- سيرفر Flask لاستقبال إشعارات الـ Postback تلقائياً من Pocket Partners ---
+app_web = Flask(__name__)
 
-# أمر البداية /start
+@app_web.route('/')
+def home():
+    return "Bot Server & Postback Listener is Running Active!"
+
+@app_web.route('/postback', methods=['GET', 'POST'])
+def handle_postback():
+    user_id = request.args.get('user_id') or request.form.get('user_id')
+    deposit = request.args.get('deposit') or request.form.get('deposit')
+    
+    if user_id:
+        ALLOWED_IDS.add(str(user_id).strip())
+        logging.info(f"✅ New Verified ID added via Postback: {user_id} (Deposit: {deposit})")
+        return f"OK - User {user_id} Verified", 200
+    return "No user_id received", 400
+
+def run_flask():
+    port = int(os.environ.get("PORT", 8080))
+    app_web.run(host='0.0.0.0', port=port)
+
+# -------------------------------------------------------------
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
         "🚀 **مرحباً بك في بوت التداول والتحليل الفني السريع**\n\n"
-        "لتفعيل البوت والحصول على إشارات دقيقة 100%، يرجى اتباع الخطوات التاليّة:\n\n"
+        "لتفعيل البوت والحصول على إشارات دقيقة 100%، يرجى اتباع الخطوات التالية:\n\n"
         "1️⃣ **سجّل حساباً جديداً** عبر رابط الإحالة الخاص بنا.\n"
-        "2️⃣ **أرسل رقم الـ ID** الخاص بحسابك.\n"
-        "3️⃣ **قم بإيداع مبلغ 5$ على الأقل** في حسابك للتفعيل."
+        "2️⃣ **قم بإيداع مبلغ 5$ كحد أدنى** لتفعيل الحساب تلقائياً.\n"
+        "3️⃣ **أدخل رقم الـ ID** الخاص بحسابك للتحقق الفوري."
     )
     
     keyboard = [
         [InlineKeyboardButton("🔗 تسجيل حساب جديد", url=REGISTRATION_URL)],
-        [InlineKeyboardButton("✅ 1. أدخل رقم الـ ID", callback_data='check_id_step')]
+        [InlineKeyboardButton("✅ أدخل رقم الـ ID للتحقق", callback_data='check_id_step')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await update.message.reply_text(text, reply_markup=reply_markup, parse_mode='Markdown')
     return ConversationHandler.END
 
-# الخطوة 1: طلب الـ ID
 async def check_id_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
-    text = "📥 **الرجاء إرسال رقم الـ ID الخاص بحسابك الجديد الآن:**"
+    text = "📥 **الرجاء إرسال رقم الـ ID الخاص بحسابك الآن للتحقق التلقائي:**"
     await query.edit_message_text(text, parse_mode='Markdown')
     return WAITING_FOR_ID
 
-# الخطوة 2: استقبال الـ ID وطلب إثبات الإيداع ($5)
 async def receive_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id_input = update.message.text.strip()
-    context.user_data['pocket_id'] = user_id_input
     
-    text = (
-        f"✅ **تم تسجيل الـ ID:** `{user_id_input}`\n\n"
-        "💵 **الخطوة الأخيرة - تأكيد الإيداع ($5 كحد أدنى):**\n\n"
-        "لتفعيل وصولك اليومي للإشارات، يرجى شحن حسابك بمبلغ **5$ أو أكثر**، ثم أرسل لقطة شاشة (صورة) لإثبات الإيداع هنا."
-    )
-    
-    keyboard = [
-        [InlineKeyboardButton("↗️ شحن الحساب الآن ($5)", url=REGISTRATION_URL)]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await update.message.reply_text(text, reply_markup=reply_markup, parse_mode='Markdown')
-    return WAITING_FOR_DEPOSIT_PROOF
-
-# استقبال صورة الإيداع للتحقق وتفعيل الخدمة
-async def receive_deposit_proof(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # تفعيل الحساب بعد إرسال الإثبات
-    context.user_data['is_verified'] = True
-    
-    text = (
-        "🎉 **تم التحقق والتفعيل بنجاح!**\n\n"
-        "حسابك جاهز الآن لاستخدام خوارزمية التحليل الفني المتقدمة.\n"
-        "اختر الزوج الذي ترغب بالتداول عليه واستخراج الإشارة فوراً:"
-    )
-    
-    keyboard = []
-    pairs_list = list(ALL_PAIRS.items())
-    for i in range(0, len(pairs_list), 2):
-        row = [InlineKeyboardButton(pairs_list[i][1], callback_data=f"analyze_{pairs_list[i][0]}")]
-        if i + 1 < len(pairs_list):
-            row.append(InlineKeyboardButton(pairs_list[i+1][1], callback_data=f"analyze_{pairs_list[i+1][0]}"))
-        keyboard.append(row)
+    if user_id_input in ALLOWED_IDS:
+        context.user_data['is_verified'] = True
+        context.user_data['pocket_id'] = user_id_input
         
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text(text, reply_markup=reply_markup, parse_mode='Markdown')
-    return ConversationHandler.END
+        text = (
+            f"✅ **تم التحقق بنجاح من الـ ID:** `{user_id_input}`\n\n"
+            "🎉 **حسابك مسجل ومربوط رسمياً!**\n"
+            "اختر الزوج المالي الذي ترغب بتحليله واستخراج الإشارة له فوراً:"
+        )
+        
+        keyboard = []
+        pairs_list = list(ALL_PAIRS.items())
+        for i in range(0, len(pairs_list), 2):
+            row = [InlineKeyboardButton(pairs_list[i][1], callback_data=f"analyze_{pairs_list[i][0]}")]
+            if i + 1 < len(pairs_list):
+                row.append(InlineKeyboardButton(pairs_list[i+1][1], callback_data=f"analyze_{pairs_list[i+1][0]}"))
+            keyboard.append(row)
+            
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text(text, reply_markup=reply_markup, parse_mode='Markdown')
+        return ConversationHandler.END
+    else:
+        text = (
+            f"❌ **عذراً، هذا الـ ID (`{user_id_input}`) غير مسجل عبر رابطنا أو لم يتم تأكيد إيداع $5 بعد.**\n\n"
+            "⚠️ **للتفعيل:**\n"
+            "1. قم بالتسجيل عبر الرابط أدناه.\n"
+            "2. قم بإيداع 5$ على الأقل.\n"
+            "3. انتظر بضع ثوانٍ وأعد المحاولة."
+        )
+        keyboard = [
+            [InlineKeyboardButton("🔗 تسجيل حساب جديد", url=REGISTRATION_URL)],
+            [InlineKeyboardButton("🔄 إعادة المحاولة", callback_data='check_id_step')]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text(text, reply_markup=reply_markup, parse_mode='Markdown')
+        return ConversationHandler.END
 
-# محرك التحليل الفني المتقدم لكل الأزواج والذهب
 async def market_analysis_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
-    # التأكد من التفعيل أولاً
     if not context.user_data.get('is_verified', False):
-        text = "⚠️ **عذراً، يجب إتمام خطوة الإيداع ($5) وإرسال الإثبات لتفعيل قسم الإشارات.**"
-        keyboard = [[InlineKeyboardButton("🔗 شحن الحساب والتفعيل", url=REGISTRATION_URL)]]
+        text = "⚠️ **عذراً، يجب التحقق من الـ ID أولاً.**"
+        keyboard = [[InlineKeyboardButton("🔗 تسجيل وشحن الحساب", url=REGISTRATION_URL)]]
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
         return
 
     data = query.data.replace("analyze_", "")
     selected_pair_name = ALL_PAIRS.get(data, "🪙 الذهب (XAUUSD)")
     
-    # خوارزمية تحليل فني قوية حسابياً
     rsi_value = random.randint(20, 80)
     if rsi_value <= 35:
         action = "صعود 🟢 (CALL / شراء)"
@@ -149,7 +168,7 @@ async def market_analysis_callback(update: Update, context: ContextTypes.DEFAULT
         f"🎯 **نسبة دقة التحليل:** {accuracy_rate}\n"
         f"💡 **سبب التحليل:** {reason}\n\n"
         f"🔥 **التوصية النهائية:** **{action}**\n\n"
-        f"⚠️ *تنبيه: التزم بإدارة رأس المال وتداول على الحساب التجريبي للتأكد.*"
+        f"⚠️ *تنبيه: التزم بإدارة رأس المال وتداول بحكمة.*"
     )
     
     keyboard = [
@@ -164,7 +183,6 @@ async def market_analysis_callback(update: Update, context: ContextTypes.DEFAULT
     except Exception:
         pass
 
-# العودة لقائمة الأزواج
 async def back_to_pairs_list_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -181,11 +199,9 @@ async def back_to_pairs_list_callback(update: Update, context: ContextTypes.DEFA
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text(text, reply_markup=reply_markup, parse_mode='Markdown')
 
-# التعامل مع الضغط على زر Start السفلي
 async def handle_start_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await start(update, context)
 
-# إلغاء المحادثة
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("تم الإلغاء.")
     return ConversationHandler.END
@@ -195,13 +211,16 @@ def main():
         print("Error: BOT_TOKEN is missing!")
         return
 
+    t = Thread(target=run_flask)
+    t.daemon = True
+    t.start()
+
     app = Application.builder().token(BOT_TOKEN).build()
 
     conv_handler = ConversationHandler(
         entry_points=[CallbackQueryHandler(check_id_callback, pattern='^check_id_step$')],
         states={
             WAITING_FOR_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_id)],
-            WAITING_FOR_DEPOSIT_PROOF: [MessageHandler(filters.PHOTO | filters.TEXT, receive_deposit_proof)],
         },
         fallbacks=[CommandHandler('cancel', cancel)],
     )
@@ -212,7 +231,7 @@ def main():
     app.add_handler(CallbackQueryHandler(market_analysis_callback, pattern='^analyze_.*$'))
     app.add_handler(CallbackQueryHandler(back_to_pairs_list_callback, pattern='^back_to_pairs_list$'))
 
-    print("Advanced Trading Bot with Deposit Proof & All Pairs is running...")
+    print("Bot with Flask Postback Integration is running...")
     app.run_polling()
 
 if __name__ == "__main__":
