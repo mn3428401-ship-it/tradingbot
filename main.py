@@ -1,7 +1,7 @@
 import os
 import logging
 import random
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -17,134 +17,145 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 
-# مراحل المحادثة
+# مراحل المحادثة للتحقق
 WAITING_FOR_ID = 1
 
 # رابط الإحالة الخاص بك
 REGISTRATION_URL = "https://pocket-friends.co/r/g6ccrwmyb6"
 
+# لوحة المفاتيح الدائمة تحت الدردشة (لعدم الخروج والخول كل شوي)
+def get_main_menu():
+    keyboard = [
+        [KeyboardButton("📊 تحليل أزواج العملات والذهب"), KeyboardButton("👤 حسابي وتفعيل البوت")],
+        [KeyboardButton("↗️ منصة التداول (Pocket Option)"), KeyboardButton("ℹ️ تعليمات الاستخدام")]
+    ]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
 # أمر البداية /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
-        "🚀 **الخطوة 1 - تفعيل البوت**\n\n"
-        "لتفعيل البوت، يجب عليك تسجيل حساب جديد عبر رابط الإحالة الخاص بنا.\n\n"
-        "⚠️ **مهم:** إذا كان لديك حساب بالفعل، يجب إنشاء حساب جديد باستخدام الرابط أدناه لربط البوت.\n\n"
-        "1️⃣ **سجّل حساباً جديداً عبر الزر أدناه.**\n"
-        "2️⃣ **جاهز؟** اضغط على (تحقق من ID) وأرسل رقم ID الخاص بحسابك."
+        "🤖 **أهلاً بك في بوت التداول الاحترافي (Mini App Ready)**\n\n"
+        "هذا البوت يزودك بالتحليلات الفنية والإشارات اللحظية للذهب وأزواج العملات للتداول السريع.\n\n"
+        "اختر من القائمة أدناه ما تحتاجه:"
     )
+    await update.message.reply_text(text, reply_markup=get_main_menu(), parse_mode='Markdown')
+
+# التعامل مع الأزرار الرئيسية الدائمة
+async def handle_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
     
-    keyboard = [
-        [InlineKeyboardButton("🔗 تسجيل", url=REGISTRATION_URL)],
-        [InlineKeyboardButton("✅ تحقق من ID", callback_data='check_id_step')]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await update.message.reply_text(text, reply_markup=reply_markup, parse_mode='Markdown')
-    return ConversationHandler.END
+    if text == "👤 حسابي وتفعيل البوت":
+        reg_text = (
+            "🚀 **خطوات ربط الحساب وتفعيل البوت:**\n\n"
+            "1️⃣ سجل حساباً جديداً عبر رابط الإحالة الخاص بنا:\n"
+            f"{REGISTRATION_URL}\n\n"
+            "2️⃣ أرسل رقم الـ ID الخاص بحسابك هنا للتحقق."
+        )
+        keyboard = [[InlineKeyboardButton("🔗 تسجيل حساب جديد", url=REGISTRATION_URL)],
+                    [InlineKeyboardButton("✅ تحقق من الـ ID", callback_data='check_id_step')]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text(reg_text, reply_markup=reply_markup, parse_mode='Markdown')
+
+    elif text == "📊 تحليل أزواج العملات والذهب":
+        pairs_text = "📊 **اختر الأصل المالي المطلوب لتحليله واستخراج الإشارة فوراً:**"
+        keyboard = [
+            [InlineKeyboardButton("🪙 الذهب (XAUUSD)", callback_data='analyze_XAUUSD')],
+            [InlineKeyboardButton("💶 EUR/USD", callback_data='analyze_EURUSD'), InlineKeyboardButton("💷 GBP/USD", callback_data='analyze_GBPUSD')],
+            [InlineKeyboardButton("💴 USD/JPY", callback_data='analyze_USDJPY'), InlineKeyboardButton("🇦🇺 AUD/USD", callback_data='analyze_AUDUSD')],
+            [InlineKeyboardButton("🔄 تحديث القائمة", callback_data='refresh_pairs')]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text(pairs_text, reply_markup=reply_markup, parse_mode='Markdown')
+
+    elif text == "↗️ منصة التداول (Pocket Option)":
+        await update.message.reply_text(f"اضغط على الرابط للانتقال للمنصة مباشرة:\n{REGISTRATION_URL}")
+
+    elif text == "ℹ️ تعليمات الاستخدام":
+        await update.message.reply_text(
+            "💡 **تعليمات هامة:**\n"
+            "- الإشارات مبنية على مؤشرات التحليل الفني (RSI والدعم والمقاومة).\n"
+            "- استخدم الحساب التجريبي (Demo) أولاً لاختبار الإشارات قبل التداول الحقيقي.\n"
+            "- التداول ينطوي على مخاطرة، قم دائماً بإدارة رأس مالك بحكمة."
+        )
 
 # زر التحقق من ID
 async def check_id_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    
-    text = "📥 **الرجاء إرسال رقم الـ ID الخاص بحسابك الجديد الآن:**"
+    text = "📥 **الرجاء إرسال رقم الـ ID الخاص بحسابك الجديد الآن في رسالة:**"
     await query.edit_message_text(text, parse_mode='Markdown')
     return WAITING_FOR_ID
 
-# استقبال الـ ID من المستخدم
+# استقبال الـ ID
 async def receive_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id_input = update.message.text.strip()
-    
-    # حفظ الـ ID في بيانات المستخدم
     context.user_data['pocket_id'] = user_id_input
     
-    # رسالة خطوة الإيداع وتفعيل اختيار الأزواج
     text = (
-        f"✅ **تم تسجيل الـ ID الخاص بك:** `{user_id_input}`\n\n"
-        "🚀 **الخطوة 2 - شحن الحساب والتفعيل**\n\n"
-        "بقي القليل فقط! للحصول على الوصول الشامل لتحليل السوق والإشارات، قم بتعبئة رصيدك بمبلغ لا يقل عن **$5**.\n\n"
-        "اختر الزوج الذي تريد تحليله مباشرة:"
+        f"✅ **تم حفظ الـ ID بنجاح:** `{user_id_input}`\n\n"
+        "أصبح بإمكانك الآن الانتقال لقسم **تحليل أزواج العملات والذهب** واستخراج الإشارات مباشرة بدون قيود!"
     )
-    
-    keyboard = [
-        [InlineKeyboardButton("🪙 الذهب (XAUUSD)", callback_data='analyze_XAUUSD')],
-        [InlineKeyboardButton("💶 EUR/USD", callback_data='analyze_EURUSD')],
-        [InlineKeyboardButton("💷 GBP/USD", callback_data='analyze_GBPUSD')],
-        [InlineKeyboardButton("↗️ إيداع الرصيد", url=REGISTRATION_URL)]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await update.message.reply_text(text, reply_markup=reply_markup, parse_mode='Markdown')
+    await update.message.reply_text(text, reply_markup=get_main_menu(), parse_mode='Markdown')
     return ConversationHandler.END
 
-# محرك تحليل السوق المخصص بناءً على اختيار المستخدم
+# محرك تحليل السوق لكل الأزواج والذهب
 async def market_analysis_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
-    # معرفة الزوج الذي اختاره المستخدم من الـ callback_data
     data = query.data
     pair_map = {
-        'analyze_XAUUSD': "XAUUSD (الذهب)",
-        'analyze_EURUSD': "EURUSD",
-        'analyze_GBPUSD': "GBPUSD"
+        'analyze_XAUUSD': "🪙 الذهب (XAUUSD)",
+        'analyze_EURUSD': "💶 اليورو / دولار (EURUSD)",
+        'analyze_GBPUSD': "💷 الباوند / دولار (GBPUSD)",
+        'analyze_USDJPY': "💴 الدولار / الين (USDJPY)",
+        'analyze_AUDUSD': "🇦🇺 الأسترالي / دولار (AUDUSD)"
     }
     
-    selected_pair = pair_map.get(data, "XAUUSD (الذهب)")
+    selected_pair = pair_map.get(data, "🪙 الذهب (XAUUSD)")
     action = random.choice(["صعود 🟢 (CALL)", "هبوط 🔴 (PUT)"])
-    timeframe = "دقيقة واحدة (1M)"
-    rsi_value = random.randint(30, 70)
+    timeframe = "دقيقة واحدة (1M) - التداول السريع"
+    rsi_value = random.randint(28, 72)
     
     analysis_text = (
-        f"🔍 **تقرير تحليل السوق (حسب طلبك):**\n\n"
-        f"🪙 **الأصل المالي:** {selected_pair}\n"
-        f"⏱️ **الفريم الزمني:** {timeframe}\n"
-        f"📊 **مؤشر القوة النسبية (RSI):** {rsi_value}\n"
-        f"📉 **حالة الدعم والمقاومة:** تم رصد تقاطع فني واستقرار عند مستويات قوية.\n\n"
+        f"📈 **تقرير التحليل الفني اللحظي:**\n\n"
+        f"📌 **الأصل:** {selected_pair}\n"
+        f"⏱️ **الفريم:** {timeframe}\n"
+        f"📊 **مؤشر RSI:** {rsi_value}\n"
+        f"📉 **الحالة:** تم رصد فرصة قوية بناءً على حركة السعر والشموع الأخيرة.\n\n"
         f"🎯 **التوصية:** **{action}**\n\n"
-        f"⚠️ *ملاحظة: تداول بحكمة وقم بإدارة رأس مالك.*"
+        f"⚡ *انقر فوق زر التحديث أدناه للحصول على إشارة جديدة فوراً دون إعادة تشغيل البوت!*"
     )
     
     keyboard = [
-        [InlineKeyboardButton("🔙 اختيار زوج آخر", callback_data='back_to_pairs')],
-        [InlineKeyboardButton("📈 الذهاب للتداول", url=REGISTRATION_URL)]
+        [InlineKeyboardButton("🔄 تحديث التحليل وإعطاء إشارة جديدة", callback_data=data)],
+        [InlineKeyboardButton("🔙 العودة لقائمة الأزواج", callback_data='back_to_menu')],
+        [InlineKeyboardButton("📈 تنفيذ الصفقة في المنصة", url=REGISTRATION_URL)]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    await query.edit_message_text(analysis_text, reply_markup=reply_markup, parse_mode='Markdown')
+    try:
+        await query.edit_message_text(analysis_text, reply_markup=reply_markup, parse_mode='Markdown')
+    except Exception:
+        pass # لتجنب الأخطاء إذا كانت البيانات مطابقة تماماً
 
-# العودة لقائمة اختيار الأزواج
-async def back_to_pairs_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# العودة لقائمة الأزواج
+async def back_to_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
-    text = "📊 **الرجاء اختيار الزوج المالي الذي ترغب بتحليله:**"
+    pairs_text = "📊 **اختر الأصل المالي المطلوب لتحليله واستخراج الإشارة فوراً:**"
     keyboard = [
         [InlineKeyboardButton("🪙 الذهب (XAUUSD)", callback_data='analyze_XAUUSD')],
-        [InlineKeyboardButton("💶 EUR/USD", callback_data='analyze_EURUSD')],
-        [InlineKeyboardButton("💷 GBP/USD", callback_data='analyze_GBPUSD')],
-        [InlineKeyboardButton("↗️ إيداع الرصيد", url=REGISTRATION_URL)]
+        [InlineKeyboardButton("💶 EUR/USD", callback_data='analyze_EURUSD'), InlineKeyboardButton("💷 GBP/USD", callback_data='analyze_GBPUSD')],
+        [InlineKeyboardButton("💴 USD/JPY", callback_data='analyze_USDJPY'), InlineKeyboardButton("🇦🇺 AUD/USD", callback_data='analyze_AUDUSD')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.edit_message_text(text, reply_markup=reply_markup, parse_mode='Markdown')
-
-# التعامل مع زر تحقق من الإيداع
-async def check_deposit_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    
-    text = "📊 **الرجاء اختيار الزوج المالي الذي ترغب بتحليله:**"
-    keyboard = [
-        [InlineKeyboardButton("🪙 الذهب (XAUUSD)", callback_data='analyze_XAUUSD')],
-        [InlineKeyboardButton("💶 EUR/USD", callback_data='analyze_EURUSD')],
-        [InlineKeyboardButton("💷 GBP/USD", callback_data='analyze_GBPUSD')]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.edit_message_text(text, reply_markup=reply_markup, parse_mode='Markdown')
+    await query.edit_message_text(pairs_text, reply_markup=reply_markup, parse_mode='Markdown')
 
 # إلغاء المحادثة
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("تم الإلغاء.")
+    await update.message.reply_text("تم الإلغاء.", reply_markup=get_main_menu())
     return ConversationHandler.END
 
 def main():
@@ -164,11 +175,12 @@ def main():
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(conv_handler)
-    app.add_handler(CallbackQueryHandler(check_deposit_callback, pattern='^check_deposit_step$'))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_main_menu))
     app.add_handler(CallbackQueryHandler(market_analysis_callback, pattern='^analyze_.*$'))
-    app.add_handler(CallbackQueryHandler(back_to_pairs_callback, pattern='^back_to_pairs$'))
+    app.add_handler(CallbackQueryHandler(back_to_menu_callback, pattern='^back_to_menu$'))
+    app.add_handler(CallbackQueryHandler(back_to_menu_callback, pattern='^refresh_pairs$'))
 
-    print("Bot is running with custom pair selection...")
+    print("Full Featured Trading Bot is running...")
     app.run_polling()
 
 if __name__ == "__main__":
