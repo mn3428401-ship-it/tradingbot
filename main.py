@@ -10,85 +10,144 @@ logger = logging.getLogger(__name__)
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
 
-# تحليل شامل لجميع الأصول والأزواج مع تحديد زمن الشمعة ومدة الصفقة
-def analyze_all_assets():
-    # قائمة بجميع الأصول المتاحة
-    assets = [
-        {"name": "🪙 الذهب (XAUUSD)", "duration": "دقيقة واحدة (1M)"},
-        {"name": "💶 اليورو / دولار (EURUSD)", "duration": "دقيقة إلى دقيقتين (1M - 2M)"},
-        {"name": "💷 الباوند / دولار (GBPUSD)", "duration": "دقيقة واحدة (1M)"},
-        {"name": "🪙 البيتكوين (BTCUSD)", "duration": "دقيقتان (2M)"}
-    ]
-    
-    selected_asset = random.choice(assets)
-    asset_name = selected_asset["name"]
-    trade_duration = selected_asset["duration"]
-    
-    tf = "دقيقة واحدة (1M) - التداول السريع"
-    candle_sec = random.randint(10, 50)
-    candle_time = f"إغلاق الشمعة الحالية خلال: {candle_sec} ثانية"
-    
-    rsi_value = random.randint(20, 80)
-    
-    if rsi_value < 32:
-        rsi_status = f"قوة المؤشر (RSI): {rsi_value} (تشبع بيعي قوي - Oversold)"
-        reason = "وصول السعر لمنطقة تشبع بيعي قوية + ارتداد مؤكد من مستوى دعم رئيسي مع إغلاق شمعة إيجابي."
-        signal = "صعود (CALL / شراء)"
-        signal_emoji = "🟢"
-        accuracy = random.randint(81, 93)
-    elif rsi_value > 68:
-        rsi_status = f"قوة المؤشر (RSI): {rsi_value} (تشبع شرائي قوي - Overbought)"
-        reason = "وصول السعر لمنطقة تشبع شرائي قوية + اصطدام بمستوى مقاومة تاريخي مع ظهور برايس أクション سلبي."
-        signal = "هبوط (PUT / بيع)"
-        signal_emoji = "🔴"
-        accuracy =ర random.randint(81, 93) if 'accuracy' in locals() else random.randint(81, 93)
-    else:
-        rsi_status = f"قوة المؤشر (RSI): {rsi_value} (منطقة حيادية متحركة)"
-        reason = "حركة سعرية متوازنة مع توافق مؤشرات الزخم للحظات الاختراق ومتابعة السلوك السعري."
-        signal = "صعود (CALL / شراء)" if random.choice([True, False]) else "هبوط (PUT / بيع)"
-        signal_emoji = "🟢" if "صعود" in signal else "🔴"
-        accuracy = random.randint(75, 85)
+# قائمة الأزواج والأصول
+PAIRS = [
+    ("🪙 الذهب (XAUUSD)", "pair_XAUUSD"),
+    ("💶 EUR/USD", "pair_EURUSD"),
+    ("💷 GBP/USD", "pair_GBPUSD"),
+    ("🇯🇵 USD/JPY", "pair_USDJPY"),
+    ("🪙 BTC/USD", "pair_BTCUSD"),
+    ("🇦🇺 AUD/USD", "pair_AUDUSD")
+]
 
-    report = (
-        f"📊 **تقرير التحليل الشامل لجميع الأصول (سكالبينغ):**\n\n"
-        f"📌 **الأصل المالي:** {asset_name}\n"
-        f"⏱️ **الفريم الزمني:** {tf}\n"
-        f"⏳ **زمن الشمعة:** {candle_time}\n"
-        f"⏰ **مدة الصفقة:** {trade_duration}\n"
-        f"📈 **{rsi_status}**\n"
-        f"🎯 **نسبة دقة الدمج:** {accuracy}% - {accuracy + 4}%\n"
-        f"💡 **سبب التحليل المشترك:** {reason}\n\n"
-        f"🔥 **التوصية النهائية:** {signal} {signal_emoji}\n\n"
-        f"⚠️ **تنبيه:** التزم بإدارة رأس المال وتداول بحكمة مع بداية الشمعة الجديدة."
-    )
-    return report
+# فريمات الشموع
+CANDLE_TIMEFRAMES = [
+    ("⏱️ شمعة دقيقة (1M)", "tf_1M"),
+    ("⏱️ شمعة 5 دقائق (5M)", "tf_5M"),
+    ("⏱️ شمعة 15 دقيقة (15M)", "tf_15M")
+]
 
-def get_main_keyboard():
+# مدة الصفقة
+TRADE_DURATIONS = [
+    ("⏰ صفقة دقيقة (1 Min)", "dur_1M"),
+    ("⏰ صفقة دقيقتين (2 Min)", "dur_2M"),
+    ("⏰ صفقة 5 دقائق (5 Min)", "dur_5M")
+]
+
+# لوحة اختيار الزوج
+def get_pairs_keyboard():
+    keyboard = []
+    row = []
+    for name, code in PAIRS:
+        row.append(InlineKeyboardButton(name, callback_data=f"select_pair:{code}:{name}"))
+        if len(row) == 2:
+            keyboard.append(row)
+            row = []
+    if row:
+        keyboard.append(row)
+    return InlineKeyboardMarkup(keyboard)
+
+# لوحة اختيار زمن الشمعة
+def get_tf_keyboard(pair_code, pair_name):
+    keyboard = []
+    for name, code in CANDLE_TIMEFRAMES:
+        keyboard.append([InlineKeyboardButton(name, callback_data=f"select_tf:{pair_code}:{pair_name}:{code}:{name}")])
+    return InlineKeyboardMarkup(keyboard)
+
+# لوحة اختيار مدة الصفقة
+def get_dur_keyboard(pair_code, pair_name, tf_code, tf_name):
+    keyboard = []
+    for name, code in TRADE_DURATIONS:
+        keyboard.append([InlineKeyboardButton(name, callback_data=f"analyze:{pair_code}:{pair_name}:{tf_code}:{tf_name}:{code}:{name}")])
+    return InlineKeyboardMarkup(keyboard)
+
+# زر العودة
+def get_result_keyboard(pair_code, pair_name, tf_code, tf_name, dur_code, dur_name):
     keyboard = [
-        [InlineKeyboardButton("🔄 تحديث التحليل وإعطاء إشارة جديدة", callback_data="new_signal")],
+        [InlineKeyboardButton("🔄 إعادة التحليل لنفس الاختيارات", callback_data=f"analyze:{pair_code}:{pair_name}:{tf_code}:{tf_name}:{dur_code}:{dur_name}")],
+        [InlineKeyboardButton("📊 اختيار زوج أو زمن آخر", callback_data="start_over")],
         [InlineKeyboardButton("📈 فتح منصة التداول", url="https://qxbroker.com")]
     ]
     return InlineKeyboardMarkup(keyboard)
 
+# أمر البدء
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_name = update.effective_user.first_name
-    welcome_text = (
+    text = (
         f"أهلاً بك يا محمد {user_name}! 🚀\n\n"
-        f"البوت الآن يحلل **جميع الأصول والعملات** (ذهب، عملات رقمية، وأزواج العملات) ويحدد لك زمن الشمعة ومدة الصفقة بدقة.\n\n"
-        f"اضغط على الزر أدناه للحصول على الإشارة الفورية:"
+        f"يرجى **اختيار زوج العملات/الأصل** الذي تريد تحليله أولاً:"
     )
-    await update.message.reply_text(welcome_text, reply_markup=get_main_keyboard())
+    if update.message:
+        await update.message.reply_text(text, reply_markup=get_pairs_keyboard())
+    elif update.callback_query:
+        await update.callback_query.edit_message_text(text, reply_markup=get_pairs_keyboard())
 
+# معالج ضغطات الأزرار
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    
-    if query.data == "new_signal":
-        new_report = analyze_all_assets()
-        try:
-            await query.edit_message_text(text=new_report, reply_markup=get_main_keyboard(), parse_mode="Markdown")
-        except Exception as e:
-            logger.error(f"Error updating message: {e}")
+    data = query.data
+
+    if data == "start_over":
+        await start(update, context)
+        return
+
+    parts = data.split(":")
+    action = parts[0]
+
+    # 1. بعد اختيار الزوج -> اختر زمن الشمعة
+    if action == "select_pair":
+        pair_code, pair_name = parts[1], parts[2]
+        text = f"الزوج المختار: **{pair_name}**\n\nالان اختر **زمن/فريم الشمعة**:"
+        await query.edit_message_text(text, reply_markup=get_tf_keyboard(pair_code, pair_name), parse_mode="Markdown")
+
+    # 2. بعد اختيار الشمعة -> اختر مدة الصفقة
+    elif action == "select_tf":
+        pair_code, pair_name, tf_code, tf_name = parts[1], parts[2], parts[3], parts[4]
+        text = f"الزوج: **{pair_name}**\nالفريم: **{tf_name}**\n\nالان اختر **مدة الصفقة** التي تريد فتحها:"
+        await query.edit_message_text(text, reply_markup=get_dur_keyboard(pair_code, pair_name, tf_code, tf_name), parse_mode="Markdown")
+
+    # 3. جلب نتيجة التحليل المخصصة
+    elif action == "analyze":
+        pair_code, pair_name, tf_code, tf_name, dur_code, dur_name = parts[1], parts[2], parts[3], parts[4], parts[5], parts[6]
+        
+        rsi_val = random.randint(20, 80)
+        candle_sec = random.randint(5, 55)
+        
+        if rsi_val < 35:
+            signal = "صعود (CALL / شراء)"
+            signal_emoji = "🟢"
+            reason = f"وصول {pair_name} لمنطقة تشبع بيعي (RSI: {rsi_val}) + ارتداد من الدعم على فريم {tf_name}."
+            accuracy = random.randint(83, 93)
+        elif rsi_val > 65:
+            signal = "هبوط (PUT / بيع)"
+            signal_emoji = "🔴"
+            reason = f"وصول {pair_name} لمنطقة تشبع شرائي (RSI: {rsi_val}) + ارتداد من المقاومة على فريم {tf_name}."
+            accuracy = random.randint(83, 93)
+        else:
+            signal = "صعود (CALL / شراء)" if random.choice([True, False]) else "هبوط (PUT / بيع)"
+            signal_emoji = "🟢" if "صعود" in signal else "🔴"
+            reason = f"استقرار الحركة بين مناطق الدعم والمقاومة مع توافق الزخم على فريم {tf_name}."
+            accuracy = random.randint(76, 85)
+
+        report = (
+            f"📊 **تقرير التحليل الفني المخصص:**\n\n"
+            f"📌 **الأصل المالي:** {pair_name}\n"
+            f"⏱️ **زمن الشمعة:** {tf_name}\n"
+            f"⏳ **المتبقي لإغلاق الشمعة:** {candle_sec} ثانية\n"
+            f"⏰ **مدة الصفقة المطلوبة:** {dur_name}\n"
+            f"📈 **مؤشر الزخم (RSI):** {rsi_val}\n"
+            f"🎯 **نسبة الدقة المتوقعة:** {accuracy}%\n"
+            f"💡 **سبب التحليل:** {reason}\n\n"
+            f"🔥 **التوصية النهائية:** {signal} {signal_emoji}\n\n"
+            f"⚠️ **تنبيه:** افتح صفقة ({dur_name}) فور بداية الشمعة الجديدة."
+        )
+
+        await query.edit_message_text(
+            text=report,
+            reply_markup=get_result_keyboard(pair_code, pair_name, tf_code, tf_name, dur_code, dur_name),
+            parse_mode="Markdown"
+        )
 
 def main():
     application = Application.builder().token(BOT_TOKEN).build()
