@@ -1,37 +1,35 @@
 import os
-import logging
-from telegram import Update
-from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters
+import threading
+from flask import Flask
+import telebot
 
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
-logger = logging.getLogger(__name__)
+# --- 1. خادم وهمي لإرضاء منصة Render ---
+app = Flask(__name__)
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_name = update.effective_user.first_name
-    welcome_message = (
-        f"أهلاً بك يا {user_name} في بوت التحليل الفني! 🚀\n\n"
-        "أنا جاهز لمساعدتك في تحليل الأسواق والمؤشرات الفنية.\n"
-        "أرسل لي أي رسالة أو أمر لنبدأ."
-    )
-    await update.message.reply_text(welcome_message)
+@app.route('/')
+def home():
+    return "Bot is running perfectly!"
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
-    await update.message.reply_text(f"تم استلام طلبك: '{text}' 📊\nجاري معالجة التحليل الفني...")
+def run_flask():
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
 
-def main():
-    token = "8791327289:AAHKEEWGKE8VL9WYUcrSI09QwVrKzsnoALM"
+# --- 2. كود بوت التيليجرام بـ telebot ---
+TOKEN = "8791327289:AAHKEEWGKE8VL9WYUcrSI09QwVrKzsnoALM"
+bot = telebot.TeleBot(TOKEN)
 
-    application = ApplicationBuilder().token(token).build()
+@bot.message_handler(commands=['start'])
+def send_welcome(message):
+    user_name = message.from_user.first_name
+    bot.reply_to(message, f"أهلاً بك يا {user_name} في بوت التحليل الفني! 🚀\nأنا جاهز لمساعدتك في تحليل الأسواق.")
 
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
-
-    print("🤖 البوت يعمل الآن...")
-    application.run_polling()
+@bot.message_handler(func=lambda message: True)
+def echo_all(message):
+    bot.reply_to(message, f"تم استلام طلبك: '{message.text}' 📊\nجاري معالجة التحليل الفني...")
 
 if __name__ == '__main__':
-    main()
+    # تشغيل الخادم الوهمي في الخلفية
+    threading.Thread(target=run_flask, daemon=True).start()
+    
+    print("🤖 البوت يعمل الآن...")
+    bot.infinity_polling()
